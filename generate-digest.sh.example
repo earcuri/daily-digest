@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# Template: Generate daily digest via Claude CLI + Google Workspace CLI
+# Customize this for your own email/calendar setup.
+# Runs at 7 AM via systemd timer (or cron).
+set -euo pipefail
+
+DATE=$(date +%Y-%m-%d)
+DIGEST_DIR="${DIGEST_DIR:?Set DIGEST_DIR to your digests directory}"
+LOG="$DIGEST_DIR/logs/generate.log"
+CLAUDE="${CLAUDE_PATH:-$HOME/.local/bin/claude}"
+
+log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG"; }
+
+log "Starting digest generation for $DATE"
+
+# Skip if today's digest already exists
+if [[ -f "$DIGEST_DIR/$DATE.md" ]]; then
+    log "Digest for $DATE already exists, skipping generation"
+    exit 0
+fi
+
+# Build the prompt — customize sections, calendars, sources for your needs
+PROMPT="Generate today's daily digest. Today is ${DATE}.
+
+INSTRUCTIONS:
+1. Search Gmail for emails from the last 24 hours
+2. Read important emails per your sender classifications
+3. Check Google Calendar for events in the next 7 days
+4. Fetch weather for your location
+5. Write the complete digest to ${DIGEST_DIR}/${DATE}.md
+
+SECTION ORDER:
+1. Weather
+2. Important emails by category
+3. News summaries
+4. Miscellaneous
+5. Calendar — next 7 days
+
+Reference previous digests in ${DIGEST_DIR}/*.md for format examples."
+
+# Allowed tools for non-interactive mode
+# Uses GWS CLI tools — adjust tool list for your setup
+ALLOWED_TOOLS="Read,Write,Glob,WebFetch"
+
+# Run Claude CLI in non-interactive mode
+if $CLAUDE -p "$PROMPT" --allowedTools "$ALLOWED_TOOLS" >> "$LOG" 2>&1; then
+    log "Claude CLI completed for $DATE"
+else
+    log "ERROR: Claude CLI failed for $DATE (exit code: $?)"
+    exit 1
+fi
+
+# Verify the digest file was actually created
+if [[ ! -f "$DIGEST_DIR/$DATE.md" ]] || [[ ! -s "$DIGEST_DIR/$DATE.md" ]]; then
+    log "ERROR: Digest file for $DATE was not created or is empty"
+    exit 1
+fi
+
+log "Digest generation succeeded for $DATE"
+
+# Cleanup digests older than 30 days
+CLEANED=0
+while IFS= read -r -d '' old_file; do
+    rm "$old_file"
+    CLEANED=$((CLEANED + 1))
+done < <(find "$DIGEST_DIR" -maxdepth 1 -name "????-??-??.md" -mtime +30 -print0 2>/dev/null)
+
+if [[ $CLEANED -gt 0 ]]; then
+    log "Cleaned up $CLEANED digest(s) older than 30 days"
+fi
+
+log "Done"

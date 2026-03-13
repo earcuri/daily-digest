@@ -1,0 +1,7 @@
+.env
+*.md
+!README.md
+__pycache__/
+*.pyc
+logs/
+digests/
