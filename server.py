@@ -58,12 +58,14 @@ _load_dotenv()
 # ---------------------------------------------------------------------------
 DIGEST_DIR = Path(os.environ["DIGEST_DIR"]) if os.environ.get("DIGEST_DIR") else None
 PORT = int(os.environ.get("DIGEST_PORT", "10001"))
-HOST = os.environ.get("DIGEST_HOST", "127.0.0.1")
+HOST = os.environ.get("DIGEST_HOST", "0.0.0.0")
 USER_NAME = os.environ.get("DIGEST_USER_NAME", "")
 APP_NAME = os.environ.get("DIGEST_APP_NAME", "Daily Digest")
 NAV_LINKS = json.loads(os.environ.get("DIGEST_NAV_LINKS", "[]"))  # [{"label":"X","url":"http://..."}]
 
 SECTION_ICONS = {
+    "mirror commitments": "\U0001f6a9",
+    "mirror": "\U0001f6a9",
     "weather": "\u2600\ufe0f",
     "career": "\U0001f4bc",
     "boxing": "\U0001f94a",
@@ -71,10 +73,15 @@ SECTION_ICONS = {
     "news": "\U0001f4f0",
     "miscellaneous": "\U0001f4cb",
     "calendar": "\U0001f4c5",
+    "notes": "\u270f\ufe0f",
+    "akita": "\U0001f916",
+    "portfolio": "\U0001f4b9",
     "other": "\U0001f4c4",
 }
 
 SECTION_ACCENTS = {
+    "mirror commitments": "#ff6b6b",
+    "mirror": "#ff6b6b",
     "career": "#7aa2f7",
     "boxing": "#f7768e",
     "technology": "#9ece6a",
@@ -82,6 +89,9 @@ SECTION_ACCENTS = {
     "miscellaneous": "#bb9af7",
     "calendar": "#ff9e64",
     "weather": "#e0af68",
+    "notes": "#bb9af7",
+    "akita": "#7dcfff",
+    "portfolio": "#9ece6a",
     "other": "#666",
 }
 
@@ -111,6 +121,8 @@ WMO_DESCRIPTIONS = {
 # ---------------------------------------------------------------------------
 # Weather API (cached)
 # ---------------------------------------------------------------------------
+
+PORTFOLIO_SNAPSHOT = Path.home() / ".config/portfolio/snapshot.json"
 
 _weather_cache: dict = {"forecast": None, "alerts": None, "ts": 0}
 CACHE_TTL = 3600  # 1 hour
@@ -173,6 +185,15 @@ def fetch_weather_alerts() -> list:
         return alerts
     except (URLError, json.JSONDecodeError, OSError):
         return _weather_cache.get("alerts") or []
+
+
+def load_portfolio_snapshot() -> dict | None:
+    try:
+        if PORTFOLIO_SNAPSHOT.exists():
+            return json.loads(PORTFOLIO_SNAPSHOT.read_text())
+    except (json.JSONDecodeError, OSError):
+        pass
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -338,9 +359,35 @@ a:hover { color: #9bb8fa; }
 }
 .card-widget:hover { background: rgba(255,255,255,0.08); color: #bbb; }
 
-/* Weather card spans full width */
+/* Date card: full first row with inline calendar */
+.dash-card.date-card {
+  grid-column: 1 / -1; grid-row: 1;
+  cursor: default; display: flex; flex-direction: row;
+  align-items: flex-start; gap: 1.5rem;
+}
+.dash-card.date-card:hover { transform: none; box-shadow: none; border-color: var(--card-accent); }
+.date-card-left {
+  min-width: 140px; text-align: center; padding: 0.25rem 0;
+  flex-shrink: 0; border-right: 1px solid #1e1e1e; padding-right: 1.5rem;
+}
+.date-card-body { padding: 0.25rem 0; }
+.date-card-sub { font-size: 1.1rem; font-weight: 600; color: #ccc; margin-top: 0.2rem; }
+.date-cal-events { flex: 1; min-width: 0; }
+.date-cal-day {
+  font-size: 0.65rem; font-weight: 700; letter-spacing: 1.5px;
+  text-transform: uppercase; color: #444; margin-top: 0.5rem; margin-bottom: 0.2rem;
+}
+.date-cal-day:first-child { margin-top: 0; }
+.date-cal-event {
+  font-size: 0.8rem; color: #aaa; padding: 0.15rem 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.date-cal-event .evt-time { color: #555; margin-right: 0.4rem; font-size: 0.75rem; }
+.date-cal-none { font-size: 0.8rem; color: #444; font-style: italic; }
+
+/* Weather card: regular grid card (no special row placement) */
 .dash-card.weather-card {
-  grid-column: 1 / -1;
+  grid-column: auto; grid-row: auto;
 }
 .weather-card-grid {
   display: flex; gap: 0.5rem; margin-top: 0.5rem;
@@ -430,8 +477,10 @@ a:hover { color: #9bb8fa; }
 }
 .section-body li { margin-bottom: 0.3rem; color: #aaa; }
 .section-body li > ul { margin-top: 0.2rem; margin-bottom: 0; }
-.section-body a { border-bottom: 1px solid rgba(122,162,247,0.3); }
-.section-body a:hover { border-bottom-color: #7aa2f7; }
+.section-body a { color: #9ab8ff; border-bottom: 1px solid rgba(122,162,247,0.3); }
+.section-body a:hover { border-bottom-color: #7aa2f7; color: #c0d4ff; }
+.section-body a[href*="mail.google.com"] { color: #7dcfff; border-bottom-color: rgba(125,207,255,0.4); }
+.section-body a[href*="mail.google.com"]:hover { color: #a8dfff; border-bottom-color: #7dcfff; }
 .section-body code {
   background: #141414; padding: 0.15rem 0.4rem; border-radius: 4px;
   font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 0.85em;
@@ -520,6 +569,44 @@ a:hover { color: #9bb8fa; }
 .alert-expires { font-size: 0.7rem; color: #555; margin-top: 0.2rem; }
 .no-alerts { color: #333; font-size: 0.8rem; font-style: italic; padding: 0.5rem 0; }
 
+/* ── Notes Input ── */
+.notes-input-area {
+  margin-top: 1.5rem; padding: 1rem;
+  background: #0d0d0d; border: 1px solid #222; border-radius: 10px;
+}
+.notes-input-area h4 {
+  font-size: 0.7rem; font-weight: 600; letter-spacing: 2px;
+  color: #444; margin-bottom: 0.75rem; text-transform: uppercase;
+}
+.notes-textarea {
+  width: 100%; min-height: 120px; padding: 0.75rem;
+  background: #111; border: 1px solid #2a2a2a; border-radius: 8px;
+  color: #e0e0e0; font-family: 'Inter', sans-serif; font-size: 0.9rem;
+  line-height: 1.6; resize: vertical; outline: none;
+  transition: border-color 0.2s;
+}
+.notes-textarea:focus { border-color: #444; }
+.notes-textarea::placeholder { color: #333; }
+.notes-submit-row {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 0.6rem;
+}
+.notes-hint { font-size: 0.7rem; color: #333; }
+.notes-submit-btn {
+  background: #1a1a2e; border: 1px solid #2a2a4a; color: #7aa2f7;
+  padding: 0.4rem 1rem; border-radius: 6px; cursor: pointer;
+  font-family: inherit; font-size: 0.8rem; font-weight: 500;
+  transition: all 0.2s;
+}
+.notes-submit-btn:hover { background: #1f2040; border-color: #3a3a6a; }
+.notes-submit-btn:disabled { opacity: 0.4; cursor: default; }
+.notes-feedback {
+  font-size: 0.75rem; padding: 0.3rem 0; min-height: 1.2rem;
+  transition: color 0.2s;
+}
+.notes-feedback.ok { color: #9ece6a; }
+.notes-feedback.err { color: #f7768e; }
+
 /* ── Responsive ── */
 @media (max-width: 900px) {
   .hero { padding: 0 6vw; }
@@ -536,6 +623,50 @@ a:hover { color: #9bb8fa; }
   .greeting-name { font-size: 2.5rem; }
   .greeting-pre { font-size: 1.2rem; }
 }
+
+/* ── Portfolio ── */
+.portfolio-live { padding: 0.25rem 0; }
+.portfolio-total-bar {
+  display: flex; justify-content: space-between; align-items: baseline;
+  padding: 0.75rem 0; border-bottom: 1px solid #1a1a1a; margin-bottom: 1rem;
+}
+.portfolio-total-val { font-size: 1.8rem; font-weight: 700; color: #f0f0f0; }
+.portfolio-total-chg { font-size: 0.9rem; font-weight: 500; }
+.portfolio-up { color: #9ece6a; }
+.portfolio-down { color: #f7768e; }
+.portfolio-flat { color: #888; }
+.portfolio-accts { display: flex; flex-direction: column; gap: 0.4rem; }
+.portfolio-acct {
+  background: #0d0d0d; border: 1px solid #1a1a1a; border-radius: 8px;
+  padding: 0.55rem 0.85rem;
+}
+.portfolio-acct-top {
+  display: flex; justify-content: space-between; align-items: baseline;
+}
+.portfolio-acct-name { font-size: 0.78rem; font-weight: 600; color: #888; }
+.portfolio-acct-val { font-size: 0.92rem; font-weight: 700; color: #e0e0e0; }
+.portfolio-acct-bot { font-size: 0.72rem; margin-top: 0.12rem; }
+.portfolio-vests { margin-top: 1.5rem; }
+.portfolio-vest-title {
+  font-size: 0.65rem; font-weight: 600; letter-spacing: 2px;
+  color: #444; margin-bottom: 0.6rem; text-transform: uppercase;
+}
+.portfolio-vest-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 0.35rem 0; border-bottom: 1px solid #111; font-size: 0.8rem;
+}
+.portfolio-vest-row:last-child { border-bottom: none; }
+.portfolio-vest-date { color: #888; min-width: 90px; }
+.portfolio-vest-shares { color: #aaa; }
+.portfolio-vest-est { color: #9ece6a; font-weight: 500; }
+.portfolio-vest-days { color: #555; font-size: 0.7rem; min-width: 32px; text-align: right; }
+.portfolio-refresh {
+  font-size: 0.65rem; color: #333; text-align: right;
+  margin-top: 1rem; font-style: italic;
+}
+.portfolio-card-mini { margin-top: 0.4rem; }
+.portfolio-card-mini .portfolio-total-val { font-size: 1.15rem; }
+.portfolio-card-mini .portfolio-total-chg { font-size: 0.8rem; }
 </style>
 </head>
 <body>
@@ -595,6 +726,8 @@ a:hover { color: #9bb8fa; }
 // Section metadata
 var SECTIONS = <!--SECTIONS_JSON-->;
 var currentSection = -1;
+var PAGE_DATE = '<!--PAGE_DATE-->';
+var TODAY_DATE = '<!--TODAY_DATE-->';
 
 // Hero auto-fade
 (function() {
@@ -615,6 +748,7 @@ function showDashboard() {
   document.getElementById('section-view').classList.remove('active');
   window.location.hash = '';
   currentSection = -1;
+  if (_portfolioPollTimer) { clearInterval(_portfolioPollTimer); _portfolioPollTimer = null; }
 }
 
 function showSection(idx) {
@@ -656,12 +790,29 @@ function showSection(idx) {
     body += '<div id="forecast-container"></div><div id="alerts-container"></div>';
   }
 
+  // For notes section on today's digest, append input area
+  if (sec.type === 'notes' && PAGE_DATE === TODAY_DATE) {
+    body += buildNotesInput();
+  }
+
+  // Portfolio section: inject live container, handled entirely by JS
+  if (sec.type === 'portfolio') {
+    body = '<div id="portfolio-section-live">Loading portfolio…</div>';
+  }
+
   document.getElementById('section-body').innerHTML = body;
   window.location.hash = sec.type;
 
   // Fetch weather data if weather section
   if (sec.type === 'weather') {
     fetchWeather();
+  }
+
+  // Portfolio: fetch immediately and start 30s poll; stop poll when leaving
+  if (_portfolioPollTimer) { clearInterval(_portfolioPollTimer); _portfolioPollTimer = null; }
+  if (sec.type === 'portfolio') {
+    fetchPortfolio();
+    _portfolioPollTimer = setInterval(fetchPortfolio, 30000);
   }
 
   // Scroll to top of section
@@ -681,6 +832,47 @@ function tempColor(t) {
   if (t < 75) return '#e0af68';
   if (t < 90) return '#ff9e64';
   return '#f7768e';
+}
+
+function buildNotesInput() {
+  return '<div class="notes-input-area">' +
+    '<h4>Add a Note</h4>' +
+    '<textarea class="notes-textarea" id="notes-text" placeholder="Type a note for today…"></textarea>' +
+    '<div class="notes-submit-row">' +
+    '<span class="notes-hint">Saved to today\'s digest</span>' +
+    '<button class="notes-submit-btn" onclick="submitNote()">Save Note</button>' +
+    '</div>' +
+    '<div class="notes-feedback" id="notes-feedback"></div>' +
+    '</div>';
+}
+
+function submitNote() {
+  var ta = document.getElementById('notes-text');
+  var fb = document.getElementById('notes-feedback');
+  var btn = document.querySelector('.notes-submit-btn');
+  if (!ta || !ta.value.trim()) return;
+  btn.disabled = true;
+  fb.textContent = 'Saving…';
+  fb.className = 'notes-feedback';
+  fetch('/notes/' + PAGE_DATE, {
+    method: 'POST',
+    headers: {'Content-Type': 'text/plain; charset=utf-8'},
+    body: ta.value.trim()
+  }).then(function(r) {
+    if (r.ok) {
+      fb.textContent = 'Saved. Reload to see it in the digest.';
+      fb.className = 'notes-feedback ok';
+      ta.value = '';
+    } else {
+      fb.textContent = 'Error saving note.';
+      fb.className = 'notes-feedback err';
+    }
+    btn.disabled = false;
+  }).catch(function() {
+    fb.textContent = 'Error — check server connection.';
+    fb.className = 'notes-feedback err';
+    btn.disabled = false;
+  });
 }
 
 function fetchWeather() {
@@ -748,6 +940,106 @@ function fetchWeather() {
     });
 }
 
+// Portfolio live data
+var _portfolioPollTimer = null;
+
+function fetchPortfolio() {
+  fetch('/api/portfolio')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var card = document.getElementById('portfolio-card-live');
+      if (card) card.innerHTML = renderPortfolioCard(data);
+      var body = document.getElementById('portfolio-section-live');
+      if (body) body.innerHTML = renderPortfolioBody(data);
+    })
+    .catch(function() {
+      var body = document.getElementById('portfolio-section-live');
+      if (body) body.innerHTML = '<div class="portfolio-refresh">Portfolio data unavailable</div>';
+    });
+}
+
+function fmtDollar(v) {
+  return '$' + Number(v).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+
+function chgClass(v) {
+  return v > 0 ? 'portfolio-up' : v < 0 ? 'portfolio-down' : 'portfolio-flat';
+}
+
+function chgStr(v, pct) {
+  var arrow = v >= 0 ? '▲' : '▼';
+  var sign = v >= 0 ? '+' : '';
+  return arrow + ' ' + sign + fmtDollar(Math.abs(v)) + ' (' + (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%)';
+}
+
+function renderPortfolioCard(data) {
+  if (!data || !data.grand_total) return '<div class="card-preview">Loading…</div>';
+  var gv = data.grand_total, gc = data.grand_day_change || 0;
+  var gp = (gv - gc) !== 0 ? gc / (gv - gc) * 100 : 0;
+  return '<div class="portfolio-card-mini">' +
+    '<div class="portfolio-total-val">' + fmtDollar(gv) + '</div>' +
+    '<div class="portfolio-total-chg ' + chgClass(gc) + '">' + chgStr(gc, gp) + '</div>' +
+    '</div>';
+}
+
+function renderPortfolioBody(data) {
+  if (!data || !data.grand_total) return '<div class="portfolio-refresh">No portfolio data available</div>';
+  var gv = data.grand_total, gc = data.grand_day_change || 0;
+  var gp = (gv - gc) !== 0 ? gc / (gv - gc) * 100 : 0;
+  var accts = data.accounts || {};
+  var acctDefs = [
+    {key: 'fidelity_401k', label: 'Fidelity 401K (-9014)'},
+    {key: 'fidelity_hsa', label: 'Fidelity HSA (-1039)'},
+    {key: 'etrade_bridgewater', label: 'E*TRADE Bridgewater (-8658)'},
+    {key: 'etrade_brokerage', label: 'E*TRADE Brokerage (-2964)'},
+    {key: 'amd_stockplan', label: 'AMD Stock Plan'},
+    {key: 'crypto', label: 'Crypto'},
+    {key: 'metals', label: 'Physical Metals'},
+    {key: 'krohn', label: 'Krohn Consortium V'},
+  ];
+  var html = '<div class="portfolio-live">';
+  html += '<div class="portfolio-total-bar">';
+  html += '<div class="portfolio-total-val">' + fmtDollar(gv) + '</div>';
+  html += '<div class="portfolio-total-chg ' + chgClass(gc) + '">' + chgStr(gc, gp) + '</div>';
+  html += '</div>';
+  html += '<div class="portfolio-accts">';
+  acctDefs.forEach(function(def) {
+    var a = accts[def.key];
+    if (!a) return;
+    var dc = a.day_change || 0;
+    var av = a.value || 0;
+    var ap = (av - dc) !== 0 ? dc / (av - dc) * 100 : 0;
+    html += '<div class="portfolio-acct"><div class="portfolio-acct-top">';
+    html += '<span class="portfolio-acct-name">' + def.label + '</span>';
+    html += '<span class="portfolio-acct-val">' + fmtDollar(av) + '</span>';
+    html += '</div>';
+    if (dc !== 0) {
+      html += '<div class="portfolio-acct-bot ' + chgClass(dc) + '">' + chgStr(dc, ap) + '</div>';
+    }
+    html += '</div>';
+  });
+  html += '</div>';
+  var vests = data.upcoming_vests || [];
+  if (vests.length > 0) {
+    var ap2 = data.amd_price || 0;
+    html += '<div class="portfolio-vests"><div class="portfolio-vest-title">Upcoming AMD Vests (next 90 days)</div>';
+    vests.forEach(function(v) {
+      var est = v.shares * ap2;
+      html += '<div class="portfolio-vest-row">';
+      html += '<span class="portfolio-vest-date">' + v.date + '</span>';
+      html += '<span class="portfolio-vest-shares">' + v.shares + ' sh</span>';
+      html += '<span class="portfolio-vest-est">' + (est > 0 ? '~' + fmtDollar(est) : '') + '</span>';
+      html += '<span class="portfolio-vest-days">' + v.days_away + 'd</span>';
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+  var ts = data.generated ? new Date(data.generated).toLocaleTimeString() : '?';
+  html += '<div class="portfolio-refresh">Snapshot: ' + ts + ' · auto-refresh 30s</div>';
+  html += '</div>';
+  return html;
+}
+
 // Hash routing
 function handleHash() {
   var hash = window.location.hash.slice(1);
@@ -788,6 +1080,11 @@ document.addEventListener('keydown', function(e) {
     showSection(n - 1);
   }
 });
+
+// Populate portfolio card on page load
+if (SECTIONS.some(function(s) { return s.type === 'portfolio'; })) {
+  fetchPortfolio();
+}
 
 // Hero scroll fade
 window.addEventListener('scroll', function() {
@@ -897,6 +1194,14 @@ def classify_section(header: str) -> str:
         return "calendar"
     if "misc" in h:
         return "miscellaneous"
+    if "note" in h:
+        return "notes"
+    if "mirror" in h:
+        return "mirror"
+    if "portfolio" in h:
+        return "portfolio"
+    if "akita" in h:
+        return "akita"
     return "other"
 
 
@@ -1070,6 +1375,73 @@ def render_weather_card_preview() -> str:
     return html
 
 
+def _build_inline_calendar(sections: list, date_str: str) -> str:
+    """Parse calendar section body and return inline event HTML for the date card."""
+    cal_body = ""
+    for s in sections:
+        if classify_section(s["header"]) == "calendar":
+            cal_body = s.get("body", "")
+            break
+
+    if not cal_body.strip():
+        return '<div class="date-cal-none">No events this week</div>'
+
+    # Parse day groups and events from markdown
+    # Handles: **Day header**, ### Day header, plain date lines
+    # Events: lines starting with - or *
+    import re as _re
+    day_re = _re.compile(r'^(?:#{1,4}\s+|\*{1,2})(.+?)(?:\*{0,2})\s*$')
+    event_re = _re.compile(r'^[-*]\s+(.+)$')
+
+    groups = []  # [(day_label, [event_str, ...])]
+    current_day = None
+    current_events = []
+
+    for raw_line in cal_body.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        # Day heading detection: starts with # or wrapped in **
+        if line.startswith('#') or (line.startswith('**') and line.endswith('**') and len(line) > 4):
+            if current_day is not None:
+                groups.append((current_day, current_events))
+            label = _re.sub(r'[#*]', '', line).strip()
+            current_day = label
+            current_events = []
+        elif event_re.match(line):
+            if current_day is None:
+                current_day = "Upcoming"
+                current_events = []
+            evt_text = event_re.match(line).group(1).strip()
+            # Strip markdown bold/italic from event text
+            evt_text = _re.sub(r'\*{1,2}([^*]+)\*{1,2}', r'\1', evt_text)
+            current_events.append(evt_text)
+
+    if current_day is not None:
+        groups.append((current_day, current_events))
+
+    if not groups:
+        return '<div class="date-cal-none">No events parsed</div>'
+
+    # Render: show up to 3 day groups, 5 events each
+    html = ""
+    for day_label, events in groups[:3]:
+        html += f'<div class="date-cal-day">{day_label}</div>'
+        if events:
+            for evt in events[:5]:
+                # Try to pull time prefix (e.g. "09:00 AM" or "09:00")
+                time_match = _re.match(r'^(\d{1,2}:\d{2}(?:\s*[AP]M)?)\s*[:\-–—]?\s*(.+)', evt, _re.IGNORECASE)
+                if time_match:
+                    t, desc = time_match.group(1), time_match.group(2)
+                    html += f'<div class="date-cal-event"><span class="evt-time">{t}</span>{desc}</div>'
+                else:
+                    html += f'<div class="date-cal-event">{evt}</div>'
+        else:
+            html += '<div class="date-cal-none">No events</div>'
+
+    return html
+
+
 def render_digest(date_str: str) -> str | None:
     md_file = DIGEST_DIR / f"{date_str}.md"
     if not md_file.exists():
@@ -1081,6 +1453,20 @@ def render_digest(date_str: str) -> str | None:
     )
     all_dates = get_digest_dates()
     prev_date, next_date = get_adjacent_dates(date_str, all_dates)
+    today_str = datetime.date.today().isoformat()
+
+    # Ensure Notes section always appears for today's digest
+    has_notes = any(classify_section(s["header"]) == "notes" for s in sections)
+    if not has_notes and date_str == today_str:
+        sections.append({"header": "Notes", "body": ""})
+
+    # Always inject Portfolio section (live data, always present)
+    has_portfolio = any(classify_section(s["header"]) == "portfolio" for s in sections)
+    if not has_portfolio:
+        sections.append({"header": "Portfolio", "body": ""})
+
+    # Filter out mirror and calendar sections — date shown in date card
+    sections = [s for s in sections if classify_section(s["header"]) not in ("mirror", "calendar")]
 
     # Classify sections
     weather_body = None
@@ -1094,8 +1480,33 @@ def render_digest(date_str: str) -> str | None:
     # Weather nav bar
     weather_nav_html = render_weather_nav(weather_body) if weather_body else ""
 
+    # Build date card (full row 1 with inline calendar events)
+    try:
+        _dt = datetime.datetime.strptime(date_str, "%Y-%m-%d")
+        _d = _dt.day
+        _suf = "th" if 11 <= _d <= 13 else {1: "st", 2: "nd", 3: "rd"}.get(_d % 10, "th")
+        _day_name = _dt.strftime("%A")
+        _month_str = _dt.strftime(f"%B %-d{_suf}, %Y")
+    except ValueError:
+        _d, _day_name, _month_str = "", "Today", date_str
+
+    # Extract calendar events from sections for inline display
+    _cal_html = _build_inline_calendar(sections, date_str)
+
+    _date_card = (
+        f'<div class="dash-card date-card" style="--card-accent:#7dcfff">'
+        f'<div class="date-card-left">'
+        f'<div class="card-header"><span class="card-icon">\U0001f4c5</span>'
+        f'<span class="card-name">{_day_name}</span></div>'
+        f'<div class="date-card-body">'
+        f'<div class="date-card-sub">{_month_str}</div>'
+        f'</div></div>'
+        f'<div class="date-cal-events">{_cal_html}</div>'
+        f'</div>'
+    )
+
     # Build cards HTML and hidden section content
-    cards_html = ""
+    cards_html = _date_card
     sections_html = ""
     sections_json = []
 
@@ -1110,6 +1521,8 @@ def render_digest(date_str: str) -> str | None:
         else:
             body_html = md_renderer.convert(sec["body"])
             md_renderer.reset()
+            # Open all links in new tab
+            body_html = body_html.replace('<a ', '<a target="_blank" rel="noopener noreferrer" ')
 
         # Card preview
         preview = strip_html(body_html)
@@ -1125,6 +1538,8 @@ def render_digest(date_str: str) -> str | None:
         )
         if is_weather:
             cards_html += render_weather_card_preview()
+        elif stype == "portfolio":
+            cards_html += '<div id="portfolio-card-live"><div class="card-preview">Loading portfolio…</div></div>'
         else:
             cards_html += f'<div class="card-preview">{preview}</div>'
 
@@ -1134,8 +1549,11 @@ def render_digest(date_str: str) -> str | None:
 
         cards_html += "</div>"
 
-        # Hidden section content
-        sections_html += f'<div id="sec-content-{idx}">{body_html}</div>'
+        # Hidden section content (portfolio uses a live div populated by JS)
+        if stype == "portfolio":
+            sections_html += f'<div id="sec-content-{idx}"></div>'
+        else:
+            sections_html += f'<div id="sec-content-{idx}">{body_html}</div>'
 
         sections_json.append({
             "type": stype,
@@ -1182,6 +1600,8 @@ def render_digest(date_str: str) -> str | None:
         .replace("<!--APP_NAME-->", APP_NAME)
         .replace("<!--EXTRA_NAV-->", extra_nav)
         .replace("<!--NAV_LINKS_JSON-->", json.dumps(NAV_LINKS).replace("'", "\\'"))
+        .replace("<!--PAGE_DATE-->", date_str)
+        .replace("<!--TODAY_DATE-->", today_str)
     )
 
 
@@ -1295,6 +1715,16 @@ class DigestHandler(BaseHTTPRequestHandler):
                 "wmo_icons": {str(k): v for k, v in WMO_ICONS.items()},
             })
 
+        elif path == "api/portfolio":
+            snap = load_portfolio_snapshot()
+            data = snap if snap else {"error": "portfolio snapshot not available"}
+            body = json.dumps(data).encode()
+            self.send_response(200 if snap else 503)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            self.wfile.write(body)
+
         elif path == "health":
             self._text(200, "ok")
 
@@ -1307,6 +1737,40 @@ class DigestHandler(BaseHTTPRequestHandler):
 
         else:
             self._html(404, render_error(404, "Page not found"))
+
+    def do_POST(self):
+        path = urlparse(self.path).path.strip("/")
+        notes_match = re.match(r"^notes/(\d{4}-\d{2}-\d{2})$", path)
+        if not notes_match:
+            self._json(404, {"error": "not found"})
+            return
+
+        date_str = notes_match.group(1)
+        md_file = DIGEST_DIR / f"{date_str}.md"
+        if not md_file.exists():
+            self._json(404, {"error": f"no digest for {date_str}"})
+            return
+
+        length = int(self.headers.get("Content-Length", 0))
+        if length <= 0 or length > 16384:
+            self._json(400, {"error": "invalid body"})
+            return
+
+        note_text = self.rfile.read(length).decode("utf-8", errors="replace").strip()
+        if not note_text:
+            self._json(400, {"error": "empty note"})
+            return
+
+        content = md_file.read_text()
+        timestamp = datetime.datetime.now().strftime("%I:%M %p")
+
+        if "\n## Notes\n" in content or content.endswith("\n## Notes"):
+            content = content.rstrip() + f"\n\n- **{timestamp}:** {note_text}\n"
+        else:
+            content = content.rstrip() + f"\n\n## Notes\n\n- **{timestamp}:** {note_text}\n"
+
+        md_file.write_text(content)
+        self._json(200, {"ok": True, "date": date_str})
 
     def _html(self, code: int, body: str):
         self.send_response(code)
